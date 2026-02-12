@@ -1,0 +1,321 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://api.themoviedb.org/3/discover/movie",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "queryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "language",
+              "value": "vi-VN"
+            },
+            {
+              "name": "region",
+              "value": "VN"
+            },
+            {
+              "name": "api_key",
+              "value": "your_key_here"
+            },
+            {
+              "name": "sort_by",
+              "value": "vote_average.desc"
+            },
+            {
+              "name": "with_genres",
+              "value": "={{ $json.genre_ids }}"
+            },
+            {
+              "name": "primary_release_date.gte",
+              "value": "={{ $json.release_date_gte }}"
+            },
+            {
+              "name": "primary_release_date.lte",
+              "value": "={{ $json.release_date_lte }}"
+            },
+            {
+              "name": "vote_count.gte",
+              "value": "200"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a44934ab-15b6-43f3-867e-8bc5e7fe1233",
+      "name": "Lấy Phim TMDB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        160,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lấy 10 phim đầu tiên\nconst movies = items[0].json.results.slice(0, 10);\n\nreturn movies.map(movie => {\n  // 1. Tự động lấy năm phát hành (nếu có)\n  let year = \"N/A\";\n  if (movie.release_date) {\n    year = movie.release_date.split('-')[0];\n  }\n\n  // 2. Trả về dữ liệu sạch\n  return {\n    json: {\n      title: movie.title, // Tên tiếng Việt\n      original_title: movie.original_title, // Tên gốc (để tìm kiếm)\n      year: year, // Năm (để tìm chính xác)\n      overview: movie.overview,\n      poster_path: \"https://image.tmdb.org/t/p/w500\" + movie.poster_path,\n      vote_average: movie.vote_average,\n      release_date: movie.release_date\n    }\n  }\n});"
+      },
+      "id": "d1604b59-983c-4bb5-b19b-61ecd5d32889",
+      "name": "Lọc 3 Phim Hot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $('Telegram Trigger1').first().json.message.chat.id }}",
+        "file": "={{ $('Lọc 3 Phim Hot').item.json.poster_path ? \"https://image.tmdb.org/t/p/w500\" + $('Lọc 3 Phim Hot').item.json.poster_path : \"\" }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🎬 Xem Trailer",
+                    "additionalFields": {
+                      "url": "=https://www.youtube.com/results?search_query=Trailer+{{ $('Lọc 3 Phim Hot').item.json.original_title }}"
+                    }
+                  },
+                  {
+                    "text": "🔎 Tìm phim này",
+                    "additionalFields": {
+                      "url": "=https://www.google.com/search?q=Xem+phim+{{ $('Lọc 3 Phim Hot').item.json.title }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "=<b>🎬 {{ ($json.Title || $('Lọc 3 Phim Hot').item.json.title).toUpperCase() }}</b>\n<code>{{ $json.Title ? $('Lọc 3 Phim Hot').item.json.original_title : \"\" }}</code>\n\n📅 Năm: <code>{{ $json.Year || $('Lọc 3 Phim Hot').item.json.year || \"N/A\" }}</code>\n⏱ Thời lượng: <code>{{ $json.Runtime || \"N/A\" }}</code>\n━━━━━━━━━━━━━━━━━━\n{{\n(() => {\n    // 1. Lấy dữ liệu từ OMDb\n    const rtObj = $json.Ratings ? $json.Ratings.find(x => x.Source === \"Rotten Tomatoes\") : null;\n    const rt = rtObj ? rtObj.Value : \"N/A\";\n    const imdb = ($json.imdbRating && $json.imdbRating !== \"N/A\") ? $json.imdbRating + \"/10\" : \"N/A\";\n    \n    // 2. Lấy dữ liệu dự phòng từ TMDB\n    const tmdb = $('Lọc 3 Phim Hot').item.json.vote_average ? $('Lọc 3 Phim Hot').item.json.vote_average.toFixed(1) + \"/10\" : \"Chưa có\";\n\n    // 3. LOGIC QUYẾT ĐỊNH HIỂN THỊ\n    // Nếu có ít nhất 1 trong 2 điểm OMDb (RT hoặc IMDb) thì hiện form OMDb\n    if (rt !== \"N/A\" || imdb !== \"N/A\") {\n        return \"🍅 <b>RT:</b> <code>\" + rt + \"</code>\\n\" +\n               \"⭐️ <b>IMDb:</b> <code>\" + imdb + \"</code>\";\n    } \n    // Nếu cả 2 đều N/A (tức là OMDb thất bại) -> Hiện TMDB\n    else {\n        return \"📈 <b>TMDB:</b> <code>\" + tmdb + \"</code> (Dữ liệu cộng đồng)\";\n    }\n})()\n}}\n🏆 <b>Giải thưởng:</b>\n<i>{{ $json.Awards && $json.Awards != \"N/A\" ? $json.Awards : \"Chưa có thông tin\" }}</i>\n━━━━━━━━━━━━━━━━━━\n📝 <b>Tóm tắt nội dung:</b>\n{{ ($('Lọc 3 Phim Hot').item.json.overview || \"Đang cập nhật...\").toString().slice(0, 350) }}...",
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "d8463622-df3e-4e8d-938e-532b4af96bc5",
+      "name": "Gửi Ảnh Poster",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        368,
+        64
+      ],
+      "webhookId": "a98dd8e3-9a34-4fe6-973d-8d377f7852c3",
+      "credentials": {
+        "telegramApi": {
+          "id": "8gj2NnaX1h5Pzsnt",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "ae49ae00-7dea-405b-9e29-f3dd424d746f",
+      "name": "Telegram Trigger1",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        -160
+      ],
+      "webhookId": "my-telegram-bot",
+      "credentials": {
+        "telegramApi": {
+          "id": "8gj2NnaX1h5Pzsnt",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Telegram Trigger1').first().json.message.text }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Bạn là một API thông minh giúp tìm kiếm phim. Nhiệm vụ của bạn là trích xuất thông tin từ câu nói của người dùng thành định dạng JSON chuẩn.  1. INPUT (Người dùng nói): {{ $('Telegram Trigger1').first().json.message.text }}  2. BẢNG MÃ THỂ LOẠI (TMDB Genre ID): - Hành động: 28 | Phiêu lưu: 12 | Hoạt hình: 16 | Hài: 35 | Hình sự: 80 - Tài liệu: 99 | Chính kịch (Drama): 18 | Gia đình: 10751 | Giả tưởng: 14 | Lịch sử: 36 - Kinh dị: 27 | Nhạc: 10402 | Bí ẩn: 9648 | Lãng mạn: 10749 - Khoa học viễn tưởng: 878 | Gay cấn: 53 | Chiến tranh: 10752 | Miền tây: 37  3. QUY TẮC XỬ LÝ NGÀY: - Nếu tìm thấy năm (ví dụ: 2010), hãy chuyển thành định dạng ngày đầy đủ. - Start date mặc định là ngày 01-01 (VD: 2010-01-01). - End date mặc định là ngày 12-31 (VD: 2010-12-31). - Nếu không có năm, hãy để trống hoặc dùng khoảng mặc định rộng (2000-2025).  4. YÊU CẦU OUTPUT (Cực kỳ quan trọng): - Chỉ trả về duy nhất chuỗi JSON. KHÔNG có markdown (```json), KHÔNG giải thích, KHÔNG chào hỏi. - Định dạng JSON bắt buộc: {   \"genre_ids\": \"số ID (nếu nhiều thì ngăn cách bằng dấu phẩy)\",   \"release_date_gte\": \"YYYY-MM-DD\",   \"release_date_lte\": \"YYYY-MM-DD\" }"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -336,
+        -160
+      ],
+      "id": "adae5978-3c39-43bc-a3bb-32952e82cb45",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -336,
+        48
+      ],
+      "id": "e7f7a8cc-34c7-45bb-a073-bd0c2c2c58c2",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "STrakrLAv79G4527",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lấy kết quả text từ AI\nconst aiText = $input.first().json.text;\n\n// Xóa các ký tự markdown thừa (```json và ```)\nconst cleanJson = aiText.replace(/```json|```/g, '').trim();\n\n// Chuyển từ chuỗi Text sang JSON Object\ntry {\n  const parsedData = JSON.parse(cleanJson);\n  return { json: parsedData };\n} catch (error) {\n  // Nếu lỗi, trả về mặc định là phim hành động mới nhất\n  return { json: { \n      genre_ids: \"28\", \n      release_date_gte: \"2024-01-01\", \n      release_date_lte: \"2025-12-31\" \n  }};\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        -160
+      ],
+      "id": "988aabee-ec27-42a8-a83f-2c713e27cb1a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "http://www.omdbapi.com/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "your_key_here"
+            },
+            {
+              "name": "t",
+              "value": "={{ $json.original_title }}"
+            },
+            {
+              "name": "y",
+              "value": "={{ $json.year }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        176,
+        64
+      ],
+      "id": "a25e0cfd-4b03-4774-bc4b-61d624f52c2a",
+      "name": "HTTP Request",
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Lấy Phim TMDB": {
+      "main": [
+        [
+          {
+            "node": "Lọc 3 Phim Hot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lọc 3 Phim Hot": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Lấy Phim TMDB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Gửi Ảnh Poster",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "888b44ed-25fd-43ba-a2ab-269e0bd7c601",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c5de79b2c0aa4375f7c26057e2a927c8ad68091711c4a615385d1878a6a3ec3b"
+  },
+  "id": "n4we-udCIILRZPtb1Pog_",
+  "tags": []
+}
