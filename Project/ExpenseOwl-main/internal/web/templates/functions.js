@@ -3,6 +3,7 @@ const colorPalette = [
     '#FFBE0B', '#FF006E', '#8338EC', '#3A86FF', 
     '#FB5607', '#38B000', '#9B5DE5', '#F15BB5'
 ];
+
 const currencyBehaviors = {
     usd: {symbol: "$", useComma: false, useDecimals: true, useSpace: false, right: false},
     eur: {symbol: "€", useComma: true, useDecimals: true, useSpace: false, right: false},
@@ -151,4 +152,36 @@ function escapeHTML(str) {
             '"': '&quot;'
         }[tag] || tag)
     );
+}
+
+// =========================================================
+// HÀM CẬP NHẬT GIAO DIỆN NGẦM DÀNH CHO AI AGENT
+// =========================================================
+async function refreshDashboardData() {
+    console.log("🤖 AI đang gọi dữ liệu mới từ Database...");
+    try {
+        const response = await fetch('http://localhost:8001/api/v1/expenses');
+        const latestExpenses = await response.json();
+        
+        console.log("Dữ liệu mới đã tải về:", latestExpenses);
+
+        if (typeof expenses !== 'undefined') {
+            expenses = latestExpenses; 
+        }
+
+        if (typeof updateUI === 'function') {
+            updateUI(); 
+        } else if (typeof renderData === 'function') {
+            renderData();
+        } else if (typeof renderExpenses === 'function') {
+            renderExpenses();
+        } else if (typeof init === 'function') {
+            init(); 
+        } else {
+            console.warn("Không tìm thấy hàm vẽ giao diện gốc. Tạm thời tải lại trang...");
+            window.location.reload();
+        }
+    } catch (error) {
+        console.error("Lỗi khi tải dữ liệu ngầm:", error);
+    }
 }

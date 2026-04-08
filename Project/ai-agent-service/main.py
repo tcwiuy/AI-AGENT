@@ -4,6 +4,7 @@ import json
 from fastapi import FastAPI
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
 # Load biến môi trường
 load_dotenv()
@@ -12,6 +13,14 @@ EXPENSE_SERVICE_URL = os.getenv("EXPENSE_SERVICE_URL", "http://127.0.0.1:8001/ap
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 app = FastAPI(title="AI Agent Service (REST API Mode)", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Chấp nhận mọi nguồn gọi tới
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class ChatRequest(BaseModel):
     message: str

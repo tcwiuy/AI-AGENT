@@ -333,9 +333,13 @@
 
         async function initialize() {
             try {
-                const configResponse = await fetch('/config');
-                if (!configResponse.ok) throw new Error('Failed to fetch configuration');
-                const config = await configResponse.json();
+                // Thêm try-catch nhỏ cho config phòng trường hợp API Python chưa làm /config
+                let config = { categories: ['Food', 'Transport', 'Utilities', 'Entertainment', 'Shopping', 'Other'], currency: 'usd', startDate: 1 };
+                try {
+                    const configResponse = await fetch('/config');
+                    if (configResponse.ok) config = await configResponse.json();
+                } catch(e) { console.log("Dùng config mặc định"); }
+                
                 const categorySelect = document.getElementById('category');
                 categorySelect.innerHTML = config.categories.map(cat => 
                     `<option value="${cat}">${cat}</option>`
@@ -343,7 +347,8 @@
                 currentCurrency = config.currency;
                 startDate = config.startDate;
                 
-                const response = await fetch('/expenses');
+                // ĐÃ SỬA: Trỏ về API Python chuẩn
+                const response = await fetch('/api/v1/expenses');
                 if (!response.ok) throw new Error('Failed to fetch data');
                 const data = await response.json();
                 allExpenses = Array.isArray(data) ? data : (data && Array.isArray(data.expenses) ? data.expenses : []);
@@ -486,13 +491,15 @@
             const formData = {
                 name: document.getElementById('name').value,
                 category: document.getElementById('category').value,
+                description: document.getElementById('name').value, // Sửa để khớp với API Python
                 amount: amount,
                 date: getISODateWithLocalTime(document.getElementById('date').value),
                 tags: Array.from(selectedTags)
             };
             try {
-                const response = await fetch('/expense', {
-                    method: 'PUT',
+                // ĐÃ SỬA: Đổi POST và API v1 để thêm chi tiêu bằng tay cũng được
+                const response = await fetch('/api/v1/expenses', {
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formData)
                 });
@@ -503,7 +510,10 @@
                     document.getElementById('expenseForm').reset();
                     document.getElementById('selected-tags').innerHTML = '';
                     selectedTags.clear();
+                    
+                    // Nạp lại dữ liệu
                     await initialize();
+                    
                     const today = new Date();
                     const year = today.getFullYear();
                     const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -533,5 +543,79 @@
             }
         });
     </script>
-</body>
+    
+    <div id="ai-chat-widget" style="position: fixed; bottom: 20px; right: 20px; width: 350px; background: white; border-radius: 12px; box-shadow: 0 5px 25px rgba(0,0,0,0.2); z-index: 9999; font-family: sans-serif; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #ddd;">
+        <div style="background: #2563eb; color: white; padding: 15px; font-weight: bold; text-align: center; font-size: 16px;">
+            ✨ Trợ Lý Tài Chính AI
+        </div>
+        
+        <div id="ai-chat-box" style="height: 320px; overflow-y: auto; padding: 15px; background: #f8fafc; display: flex; flex-direction: column; gap: 12px; font-size: 14px;">
+            <div style="background: #dbeafe; color: #1e3a8a; padding: 10px 15px; border-radius: 15px 15px 15px 0; align-self: flex-start; max-width: 85%; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                Chào bạn! Mình là AI Gemini. Mình có thể tự động ghi chép chi tiêu giúp bạn. Hôm nay bạn tiêu gì thế?
+            </div>
+        </div>
+        
+        <div style="display: flex; border-top: 1px solid #e2e8f0; padding: 10px; background: white;">
+            <input type="text" id="ai-chat-input" placeholder="VD: Đi siêu thị hết 500k..." style="flex: 1; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; transition: border-color 0.2s;">
+            <button onclick="sendToAI()" style="margin-left: 8px; padding: 10px 15px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Gửi</button>
+        </div>
+    </div>
+
+    <script>
+        async function sendToAI() {
+            const inputEl = document.getElementById('ai-chat-input');
+            const chatBox = document.getElementById('ai-chat-box');
+            const message = inputEl.value.trim();
+            
+            if (!message) return;
+
+            // 1. In tin nhắn của bạn lên màn hình
+            inputEl.value = '';
+            chatBox.innerHTML += `<div style="background: #2563eb; color: white; padding: 10px 15px; border-radius: 15px 15px 0 15px; align-self: flex-end; max-width: 85%; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">${message}</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            // 2. Báo hiệu AI đang suy nghĩ
+            const typingId = 'typing-' + Date.now();
+            chatBox.innerHTML += `<div id="${typingId}" style="background: #e2e8f0; color: #475569; padding: 10px 15px; border-radius: 15px 15px 15px 0; align-self: flex-start; font-style: italic; font-size: 13px;">AI đang phân tích và lưu Database...</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                // 3. GỌI SANG MICROSERVICE AI AGENT (Cổng 8002)
+                const response = await fetch('http://localhost:8002/api/v1/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                const data = await response.json();
+                
+                // Xóa hiệu ứng "Đang suy nghĩ"
+                document.getElementById(typingId).remove();
+                
+                // 4. In kết quả AI trả lời
+                chatBox.innerHTML += `<div style="background: #dcfce7; color: #166534; padding: 10px 15px; border-radius: 15px 15px 15px 0; align-self: flex-start; max-width: 85%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border: 1px solid #bbf7d0;">${data.reply}</div>`;
+                chatBox.scrollTop = chatBox.scrollHeight;
+
+                // 5. CẬP NHẬT BIỂU ĐỒ (KHÔNG RELOAD TRANG, KHÔNG MẤT CHAT)
+                if (data.reply.includes("thành công") || data.reply.includes("ghi nhận")) {
+                    chatBox.innerHTML += `<div style="text-align: center; color: #166534; font-size: 12px; margin-top: 8px;">
+                        ✨ Đã lưu! Đang tự động vẽ lại biểu đồ...
+                    </div>`;
+                    chatBox.scrollTop = chatBox.scrollHeight;
+
+                    // Gọi thẳng hàm initialize() có sẵn của giao diện để tải lại dữ liệu ngầm!
+                    await initialize();
+                }
+
+            } catch (error) {
+                document.getElementById(typingId).innerHTML = `Lỗi kết nối tới AI (Cổng 8002 đang tắt chăng?): ${error}`;
+            }
+        }
+
+        // Gắn sự kiện phím Enter cho khung chat
+        document.getElementById('ai-chat-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') sendToAI();
+        });
+    </script>
+    </body>
 </html>
