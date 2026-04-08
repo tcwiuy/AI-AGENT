@@ -4,6 +4,8 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 from typing import List
+from fastapi.staticfiles import StaticFiles  # <-- THÊM DÒNG NÀY
+from fastapi.responses import FileResponse   # <-- THÊM DÒNG NÀY
 
 from database import engine, Base, get_db
 import models
@@ -80,6 +82,17 @@ def get_expense_summary(year: int, month: int, db: Session = Depends(get_db)):
         "total_expense": total_amount,
         "breakdown": breakdown_list
     }
+
+# ==========================================
+# CẤU HÌNH GIAO DIỆN FRONTEND (UI)
+# Đặt đoạn này ở dưới cùng để không đè lên các API
+# ==========================================
+
+# Mở quyền truy cập cho thư mục ảnh (logo, icon)
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+
+# Trỏ thẳng tên miền gốc (/) vào thư mục chứa HTML/CSS/JS
+app.mount("/", StaticFiles(directory="internal/web/templates", html=True), name="frontend")
 
 if __name__ == "__main__":
     import uvicorn
